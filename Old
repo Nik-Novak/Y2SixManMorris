@@ -1,0 +1,207 @@
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+public class AI {
+	private String colour;
+	Board board;
+	
+	class Move implements Comparable<Move>{
+		int positionIndex;
+		int score;
+		int chipIndex;
+		Move(int posIndex, int score, int chipIndex){ this.chipIndex = chipIndex; positionIndex=posIndex; this.score=score;}
+		@Override
+		public int compareTo(Move o) {
+			return o.score-score;
+		}
+	}
+	
+	public AI(String colour, Board board){
+		this.colour=colour;
+		this.board = board;
+	}
+	
+	public String getColour(){ return colour; }
+	
+	private boolean place(Chip c, int pos){
+		board.setSelected(c);
+		board.setClicked(c);
+		boolean success = c.snapTo(board.getPos()[pos].getLoc());
+		if(success)
+			board.turnCheck();
+		c.setPlaced(true);
+		board.setSelected(null);
+		board.setClicked(null);
+		return success;
+	}
+	
+	public void remove(Data data){
+		State state = data.state();
+		if(state==State.PLACING){
+			List<Move> s = computeBestPlace(data);
+			s.sort(null);
+			for(Move i : s){
+				if(remove(i.positionIndex))
+					break;
+			}
+		}
+		else if(state == State.MOVING || state == State.FLYING)
+			return;
+	}
+	
+	private boolean remove(int i){
+		if(board.getPlayerTurn().split(" ")[0].equals("Remove"))
+			if(board.getSelected()!=null){
+				try{
+					Chip chip = (Chip)board.getSelected();
+					if(board.getPlayerTurn().split(" ")[1].equals( chip.getType() ) && chip.isPlaced()){
+						
+						if(!board.millcheck(chip.getPos(), chip.getType()) || board.getNumberOfPlaced(chip.getType()) == 3){
+							chip.remove();
+							return true;
+						}
+								
+					}
+				}catch(Exception f){}
+			}
+		return false;
+	}
+
+	public void move(Data data) {
+		State state = data.state();
+		if(state==State.PLACING){
+			List<Move> s = computeBestPlace(data);
+			s.sort(null);
+			for(Move i : s){
+				if(place(board.getFirstUnplaced(colour), i.positionIndex))
+					break;
+			}
+		}
+		else if(state == State.MOVING || state == State.FLYING){
+			List<Move> s = computeBestMove(data);
+			s.sort(null);
+			for(Move i : s){
+				System.out.println("TEST");
+				if(data.getBlue().get(i.chipIndex).snapTo(data.getPos()[i.positionIndex].getLoc())) //TODO : make dynamic to turn
+					break;
+			}
+		}
+	}
+
+	private List<Move> computeBestPlace(Data data) {
+		Data copy = data.deepCopy();
+		List<Move> s = new ArrayList<Move>();
+		for(int i=0; i!=copy.getPos().length; i++){
+			if(copy.getPos()[i].getChip()!=null)
+				continue;
+			copy.getPos()[i].setChip(new Chip(colour, copy.getPos()[i], null));
+			int score = score(copy);
+			s.add(new Move(i,score,-1));
+			copy.getPos()[i].setChip(null);
+		}
+		return s;
+	}
+
+	private List<Move> computeBestMove(Data data) {
+		Data copy = data.deepCopy();
+		List<Move> s = new ArrayList<Move>();
+		List<Chip> chips;
+		if(colour.equals("red"))
+			chips=copy.getRed();
+		else
+			chips=copy.getBlue();
+		
+		for(int i=0; i!= chips.size(); i++){
+			chips.get(i);
+		}
+		
+		for(int i=0; i!= chips.size(); i++){
+			chips.get(i).getPos().getConnections().size();
+			int endq = chips.get(i).getPos().getConnections().size();
+			for(int q=0; q!= endq; q++){
+				System.out.println("i: " + i + " -- " + "q: " + q);
+				Data copycpy = copy.deepCopy();
+				move(i,q,copycpy);
+				int score = score(copycpy);
+				s.add(new Move(q, score, i));
+			}	
+		}
+		
+		return s;
+	}
+					//chip	pos
+	private boolean move(int i, int q, Data copycpy) {
+		List<Chip> chips;
+		if(board.getPlayerTurn().equals("red"))
+			chips = copycpy.getRed();
+		else
+			chips = copycpy.getBlue();
+		Position dest = chips.get(i).getPos().getConnections().get(q);
+		if(dest.getChip()!=null)
+			return false;
+		dest.setChip(chips.get(i));
+		chips.get(i).getPos().setChip(null);
+		chips.get(i).assignPos(dest);
+		chips.get(i).setLocation(dest.getLoc());
+		System.out.println("TURN/GAME CHECK");
+		return true;
+	}
+
+	private int score(Data copy) {
+		int score = 0;
+		
+		//Horizontal
+		score+=score(0,1,2, copy);
+		score+=score(3,4,5, copy);
+		score+=score(10,11,12, copy);
+		score+=score(13,14,15, copy);
+		
+		//Vertical
+		score+=score(0, 6, 13, copy);
+		score+=score(3,7,10, copy);
+		score+=score(5,8,12, copy);
+		score+=score(2,9,15, copy);
+		return score;
+	}
+	
+	private int score(int n1, int n2, int n3, Data copy){
+		int numAlly =0, numEnem=0;
+		int score = 0;
+		Position p1 = copy.getPos()[n1];
+		Position p2 = copy.getPos()[n2];
+		Position p3 = copy.getPos()[n3];
+		
+		if(p1.getChip()!=null){
+			if(p1.getChip().getType().equals(colour))
+				numAlly++;
+			else
+				numEnem++;
+		}
+		//same as above
+		if(p2.getChip()!=null){if(p2.getChip().getType().equals(colour)){ numAlly++;} else numEnem++;}
+		//same as p1
+		if(p3.getChip()!=null){if(p3.getChip().getType().equals(colour)){ numAlly++;}else numEnem++;}
+		
+		if(numAlly == 1 && numEnem == 0)
+			score = 1;
+		else if(numAlly == 2 && numEnem == 0)
+			score = 3;
+		else if(numAlly == 3 && numEnem == 0)
+			score = 8;
+		else if(numAlly == 1 && numEnem == 1)
+			score = 0;
+		else if(numAlly == 2 && numEnem == 1)
+			score = 0;
+		else if(numAlly == 1 && numEnem == 2)
+			score = 0;
+		else if(numAlly == 0 && numEnem == 1)
+			score = -1;
+		else if(numAlly == 0 && numEnem == 2)
+			score = -5;
+		else if(numAlly == 0 && numEnem == 3)
+			score = 0;
+		
+		return score;
+	}
+}
